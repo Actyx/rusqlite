@@ -326,7 +326,7 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "bundled")]
+    #[cfg(feature = "modern_sqlite")]
     fn pragma_func_query_value() {
         use crate::NO_PARAMS;
 
@@ -379,7 +379,7 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "bundled")]
+    #[cfg(feature = "modern_sqlite")]
     fn pragma_func() {
         let db = Connection::open_in_memory().unwrap();
         let mut table_info = db.prepare("SELECT * FROM pragma_table_info(?)").unwrap();
@@ -429,5 +429,16 @@ mod test {
         let mut sql = Sql::new();
         sql.push_string_literal("value'; --");
         assert_eq!("'value''; --'", sql.as_str());
+    }
+
+    #[test]
+    fn locking_mode() {
+        let db = Connection::open_in_memory().unwrap();
+        let r = db.pragma_update(None, "locking_mode", &"exclusive");
+        if cfg!(feature = "extra_check") {
+            r.unwrap_err();
+        } else {
+            r.unwrap();
+        }
     }
 }
