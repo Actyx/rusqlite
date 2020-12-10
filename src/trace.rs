@@ -1,4 +1,4 @@
-//! Tracing and profiling functions. Error and warning log.
+//! `feature = "trace"` Tracing and profiling functions. Error and warning log.
 
 use std::ffi::{CStr, CString};
 use std::mem;
@@ -11,7 +11,10 @@ use super::ffi;
 use crate::error::error_from_sqlite_code;
 use crate::{Connection, Result};
 
-/// Set up the process-wide SQLite error logging callback.
+/// `feature = "trace"` Set up the process-wide SQLite error logging callback.
+///
+/// # Safety
+///
 /// This function is marked unsafe for two reasons:
 ///
 /// * The function is not threadsafe. No other SQLite calls may be made while
@@ -32,14 +35,11 @@ pub unsafe fn config_log(callback: Option<fn(c_int, &str)>) -> Result<()> {
     }
 
     let rc = match callback {
-        Some(f) => {
-            let p_arg: *mut c_void = mem::transmute(f);
-            ffi::sqlite3_config(
-                ffi::SQLITE_CONFIG_LOG,
-                log_callback as extern "C" fn(_, _, _),
-                p_arg,
-            )
-        }
+        Some(f) => ffi::sqlite3_config(
+            ffi::SQLITE_CONFIG_LOG,
+            log_callback as extern "C" fn(_, _, _),
+            f as *mut c_void,
+        ),
         None => {
             let nullptr: *mut c_void = ptr::null_mut();
             ffi::sqlite3_config(ffi::SQLITE_CONFIG_LOG, nullptr, nullptr)
@@ -53,17 +53,18 @@ pub unsafe fn config_log(callback: Option<fn(c_int, &str)>) -> Result<()> {
     }
 }
 
-/// Write a message into the error log established by `config_log`.
+/// `feature = "trace"` Write a message into the error log established by
+/// `config_log`.
 pub fn log(err_code: c_int, msg: &str) {
     let msg = CString::new(msg).expect("SQLite log messages cannot contain embedded zeroes");
     unsafe {
-        ffi::sqlite3_log(err_code, msg.as_ptr());
+        ffi::sqlite3_log(err_code, b"%s\0" as *const _ as *const c_char, msg.as_ptr());
     }
 }
 
 impl Connection {
-    /// Register or clear a callback function that can be used for tracing the
-    /// execution of SQL statements.
+    /// `feature = "trace"` Register or clear a callback function that can be
+    /// used for tracing the execution of SQL statements.
     ///
     /// Prepared statement placeholders are replaced/logged with their assigned
     /// values. There can only be a single tracer defined for each database
@@ -79,7 +80,7 @@ impl Connection {
         let c = self.db.borrow_mut();
         match trace_fn {
             Some(f) => unsafe {
-                ffi::sqlite3_trace(c.db(), Some(trace_callback), mem::transmute(f));
+                ffi::sqlite3_trace(c.db(), Some(trace_callback), f as *mut c_void);
             },
             None => unsafe {
                 ffi::sqlite3_trace(c.db(), None, ptr::null_mut());
@@ -87,8 +88,8 @@ impl Connection {
         }
     }
 
-    /// Register or clear a callback function that can be used for profiling
-    /// the execution of SQL statements.
+    /// `feature = "trace"` Register or clear a callback function that can be
+    /// used for profiling the execution of SQL statements.
     ///
     /// There can only be a single profiler defined for each database
     /// connection. Setting a new profiler clears the old one.
@@ -113,7 +114,7 @@ impl Connection {
         let c = self.db.borrow_mut();
         match profile_fn {
             Some(f) => unsafe {
-                ffi::sqlite3_profile(c.db(), Some(profile_callback), mem::transmute(f))
+                ffi::sqlite3_profile(c.db(), Some(profile_callback), f as *mut c_void)
             },
             None => unsafe { ffi::sqlite3_profile(c.db(), None, ptr::null_mut()) },
         };
